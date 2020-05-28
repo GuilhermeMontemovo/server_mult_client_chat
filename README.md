@@ -13,13 +13,13 @@ Guilherme de Pinho Montemovo        nºUSP 9779461
 
 # Para utilizar o programa:
 
-Primeiro execeute o comando:
+Primeiro execute o comando:
 - make
 
-Para execetar o client 1:
+Para executar o client 1:
 - make run_client1
 
-Para execetar o client 2 (em um novo terminal):
+Para executar o client 2 (em um novo terminal):
 - make run_client2
 - ip a ser conectado
 
