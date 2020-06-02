@@ -6,6 +6,7 @@
 #include <sys/socket.h> 
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #define MAX 4096 
 #define MAX_CLIENT_NAME 100 
@@ -14,8 +15,21 @@
 #define SA struct sockaddr 
 #define CONNECT_CMD "/connect"
 
+int is_wspace(char *string){
+    while(*string != '\0'){
+        if (!isspace((unsigned char)*string))
+            return 0;
+        string++;
+    }
+    return 1;
+}
+
 int check_commands(char *message){
-    return !strncmp("/quit", message, 4);
+    // TODO deal ctrl+c and ctrl+d
+    if(is_wspace(message))
+        return -2;
+    if(!strncmp("/quit", message, 5))
+        return -1;
 }      
     
 
@@ -24,22 +38,22 @@ void chat(void *socket_pointer, char *client_name){
     char message_read[MAX];
     char message_to_send[MAX_SEND];
     
-
-    
     while (fgets(message_read,MAX,stdin) > 0) { 
         strcpy(message_to_send,client_name);
         strcat(message_to_send,": ");
-
-        printf("\nEnter the message: "); 
+        
+        printf("\nEnter the message:\n"); 
 
         
         // check if the command to exit was entered 
-        if(check_commands(message_read))
+        if(check_commands(message_read) == -1)
             break;
+        if(check_commands(message_read) == -2)
+            continue;
 
         strcat(message_to_send,message_read);
-
-        if(write(socket_instance, message_to_send, strlen(message_read)) < 0)
+        
+        if(write(socket_instance, message_to_send, strlen(message_to_send)) < 0)
             printf("\nError: message not sent\n");
         
     } 
