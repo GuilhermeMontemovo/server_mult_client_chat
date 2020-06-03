@@ -17,7 +17,7 @@ Primeiro execute o comando:
 - make
 
 Para executar o cliente:
-- make run_client name='Nome do client'
+- make run_client name=<Nome do client>
 - IP a se conectar
 - /connect
 
