@@ -16,15 +16,10 @@ Guilherme de Pinho Montemovo        nºUSP 9779461
 Primeiro execute o comando:
 - make
 
-Para executar o client 1:
-- make run_client1
+Para executar o cliente:
+- make run_client name='Nome do client'
+- IP a se conectar
+- /connect
 
-Para executar o client 2 (em um novo terminal):
-- make run_client2
-- ip a ser conectado
-
-# Comentários
-
-O client 1 atua como servidor, no caso ele conecta a todas interfaces disponíves na máquina.
-
-O client 2 necessida de um IP (do client 1) para se conectar. No caso de conexão local, utilizar o IP do localhost (Ex. 0.0.0.0).
+Para executar o servidor:
+- make run_server
