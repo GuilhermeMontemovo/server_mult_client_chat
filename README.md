@@ -18,7 +18,7 @@ Primeiro execute o comando:
 
 Para executar o cliente:
 - make run_client name=\<Nome do client\>
-- IP a se conectar
+- IP a se conectar (127.0.0.1 localmente)
 - /connect
 
 Para executar o servidor:
