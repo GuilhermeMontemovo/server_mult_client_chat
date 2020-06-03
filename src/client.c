@@ -1,12 +1,16 @@
-#include <netdb.h> 
-#include <unistd.h>
 #include <stdio.h> 
 #include <stdlib.h> 
-#include <string.h> 
+#include <string.h>
+
+#include <netdb.h> 
 #include <sys/socket.h> 
 #include <arpa/inet.h>
+#include <unistd.h>
+
+
 #include <pthread.h>
 #include <ctype.h>
+#include <signal.h>
 
 #define MAX 4096 
 #define MAX_CLIENT_NAME 100 
@@ -25,7 +29,6 @@ int is_wspace(char *string){
 }
 
 int check_commands(char *message){
-    // TODO deal ctrl+c and ctrl+d
     if(is_wspace(message))
         return -2;
     if(!strncmp("/quit", message, 5))
@@ -39,17 +42,22 @@ int check_commands(char *message){
     
 
 void chat(void *socket_pointer, char *client_name){  
+    /**
+     * Chat: get user inputs, check if is a specifed command, and send to server
+     * 
+     * socket_poiter: pointer to socket id
+     * client_name: string with client name
+     */
     int socket_instance = *((int *)socket_pointer);
-    char message_read[MAX];
-    char message_to_send[MAX_SEND];
+    char message_read[MAX]; // raw message input
+    char message_to_send[MAX_SEND]; // message to be send
     
-    while (fgets(message_read,MAX,stdin) > 0) { 
-        strcpy(message_to_send,client_name);
-        strcat(message_to_send,": ");
-        
-        
+    printf("\nEnter the message:\n");
 
-        
+    while (fgets(message_read,MAX,stdin) > 0) { 
+        strcpy(message_to_send,client_name); // concat clients name
+        strcat(message_to_send,": ");      
+
         // check if the command to exit was entered 
         if(check_commands(message_read) == -1)
             break;
@@ -68,35 +76,62 @@ void chat(void *socket_pointer, char *client_name){
             printf("\nError: message not sent\n");
         
     } 
+    pthread_detach(pthread_self());
 } 
 
 void confirm_recv(int socket_instance, int len){
+    /**
+     * Funciont that send to server a confirm message, the lenth recieved
+     * 
+     * socket_instance: socket id
+     * len: lenth to send
+     */
     char str[25];
     sprintf(str, "/confirm:%d", len);
-    printf("\n--- enviando confirm %s----\n", str);
+    
     if(write(socket_instance, str, strlen(str)) < 0)
         printf("\nError: server confirm fail.\n");
 }
 
 void *messager_receiver(void *socket_pointer){
+    /*
+        recieve all incoming messages from a client
+
+        socket_pointer: cleint to listen
+    */
     int socket_instance = *((int *)socket_pointer);
     char message_received[MAX_SEND];
     int len;
 
     while((len = recv(socket_instance, message_received, MAX_SEND,0)) > 0) {
-        confirm_recv(socket_instance, len);
+        confirm_recv(socket_instance, len); // confim to server 
         message_received[len] = '\0';
         fputs(message_received,stdout);
         printf("\nEnter the message:\n");
     }
 }
 
+pthread_t thread;
+int socket_master;
+
+void intHandler(int signum) {
+    /*
+        Signal Handler 
+    */
+
+    if(pthread_kill(thread, 0) == 0)
+        pthread_detach(thread);
+    close(socket_master);  // close socket
+    exit(0);
+}
 
 int main(int argc, char *argv[]) { 
     pthread_t receiver_token;
     int socket_instance, connfd; 
     struct sockaddr_in serveraddress; 
     
+    signal(SIGINT, &intHandler);
+
     if(argc < 2) {
         printf("Usage: ./client <client_name>");
         return -1;
@@ -141,14 +176,13 @@ int main(int argc, char *argv[]) {
     } 
     else
         printf("connected to the server...\n"); 
-        
+
+    socket_master = socket_instance;
+
     //creating thread to always wait for a message
     pthread_create(&receiver_token,NULL,(void *)messager_receiver,&socket_instance);
 
+    thread = receiver_token;
     chat(&socket_instance, client_name); 
-
-    //close thread
-    pthread_join(receiver_token,NULL);
-
     close(socket_instance); 
 } 
