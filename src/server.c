@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h> 
 #include <pthread.h>
+#include <time.h>
 
 #define PORT 8080 
 #define SA struct sockaddr 
@@ -16,40 +17,112 @@
 #define MAX_SEND (MAX+MAX_CLIENT_NAME+2)
   
 
-pthread_mutex_t mutex;
+pthread_mutex_t mutex, mutex_confirm[20];
+pthread_cond_t condition[20];
+struct timespec max_wait;
 int clients[20];
+int clients_confirm[20];
 pthread_t threads[20];
 int n = 0;
+int TIMEOUT = 2;
 
 int send_ping(char *message, int current){
-    //  TODO fix ping send delay
-    char *msg = strlen(strtok(message, ": ")) + message + 2;
+    char buffer[strlen(message)+1];
+    strcpy(buffer, message);
+    char *msg = strlen(strtok(buffer, ": ")) + buffer + 2;
     
     if(!strncmp("/ping", msg, 5)){
-        if(send(current, "pong", strlen("pong"), 0) < 0) 
-            printf("Sending failure \n");        
+        if(send(current, "pong\n", strlen("pong\n"), 0) < 0) 
+            printf("Sending failure \n");
         return 0;
     }
     return -1;
 }
 
-void sendtoall(char *message_to_send, int current){
+int close_connection(int socket_id){
+    printf("Connection timeout, closing %d\n", socket_id);
+    close(socket_id);
+    return -1;
+
+}
+
+int confirm_send(int id, int len_checker){
+    
+    char message_received[MAX_SEND];
+
+    pthread_mutex_lock(&(mutex_confirm[id]));
+
+    printf("\n\n -------- Esperando %d... \n\n", id);
+    max_wait.tv_sec = time(NULL) + TIMEOUT;
+    max_wait.tv_nsec = 0;
+    pthread_cond_timedwait(&(condition[id]), &(mutex_confirm[id]), &max_wait); 
+    printf("\n\n -------- Liberou %d... \n\n", id);
+    if(clients_confirm[id] != len_checker){
+        printf("Error: client confirm fail.\n(client received) %d != (sent) %d\n\n", clients_confirm[id], len_checker);
+        pthread_mutex_unlock(&(mutex_confirm[id]));
+        return 0;
+    }
+    printf("\n--- recebendo confirm ----\n(client received) %d != (sent) %d\n\n", clients_confirm[id], len_checker);
+    clients_confirm[id] = -1;
+    pthread_mutex_unlock(&(mutex_confirm[id]));
+    return 1;    
+}
+
+int sendtoall(char *message_to_send, int current){
     int i;
     pthread_mutex_lock(&mutex);
+    int tries = 0, status = -1, confirmed = 0;
 
-    if(send_ping(message_to_send, current))
-        for(i = 0; i < n; i++) {
-            if(clients[i] != current) {
-                // TODO try 5 times until close conection
-                if(send(clients[i], message_to_send, strlen(message_to_send), 0) < 0) {
-                    printf("Sending failure \n");
-                    continue;
-                }
+    
+    for(i = 0; i < n; i++) {
+        if((clients[i] != current) && (clients[i] != -1)) {
+            printf("Enviando:<%s>\n", message_to_send);
+            
+            tries = 0;
+            status = send(clients[i], message_to_send, strlen(message_to_send), 0);
+            confirmed = confirm_send(i, strlen(message_to_send));
+
+            while((status < 0 || !confirmed) && (tries < 4)) {
+                printf("Sending failure to <%d>... Trying again (%d).\n", clients[i], tries);
+                
+                status = send(clients[i], message_to_send, strlen(message_to_send), 0);
+                confirmed = confirm_send(i, strlen(message_to_send));
+                tries++;
+            }
+            if(status < 0 || !confirmed){
+                clients[i] = close_connection(clients[i]);
+            } else {
+                printf("Sending success to <%d>\n", clients[i]);
             }
         }
+    }
     pthread_mutex_unlock(&mutex);
 }
 
+void change_cofirm(char *value, int socket_instance){
+    int id = -1;
+    for(int i = 0; i < 20; i++)
+        if(clients[i] == socket_instance)
+            id = i;
+    printf("\n ---------- verificando em %d value: %d\n\n", id, atoi(value));
+    pthread_mutex_lock(&(mutex_confirm[id]));
+    printf("\n ---------- recebendo em %d value: %d\n\n", id, atoi(value));
+    clients_confirm[id] = atoi(value);
+    pthread_cond_signal(&(condition[id]));
+    pthread_mutex_unlock(&(mutex_confirm[id]));
+}
+
+int check_command(char *message, char socket_instance){
+    char buffer[strlen(message)+1];
+    strcpy(buffer, message);
+    char *msg = strlen(strtok(buffer, ":")) + buffer + 1;
+    
+    if(!strncmp("/confirm", buffer, 7)){
+        change_cofirm(msg, socket_instance);
+        return 0;
+    }
+    return send_ping(message, socket_instance);
+}
 
 void *messager_receiver(void *socket_pointer){
     int socket_instance = *((int *)socket_pointer);
@@ -59,7 +132,8 @@ void *messager_receiver(void *socket_pointer){
     
     while((len = recv(socket_instance, message_received, MAX_SEND,0)) > 0) {
         message_received[len] = '\0';
-        sendtoall(message_received, socket_instance);
+        if(check_command(message_received, socket_instance))
+            sendtoall(message_received, socket_instance);
     }
 
 }
@@ -108,7 +182,7 @@ int main(){
         if((connfd = accept(socket_instance, (SA*)&cli, &len)) < 0)
             printf("accept failed  \n");
         else{
-            printf("server acccept the client...\n"); 
+            printf("server acccept the client <%d>...\n", connfd); 
             
             pthread_mutex_lock(&mutex);
             
@@ -117,7 +191,9 @@ int main(){
             // creating a thread for each client 
             
             p_ret = pthread_create(&(threads[n]), NULL, (void *)messager_receiver, &connfd);
-            
+            pthread_cond_init(&(condition[n]), NULL);
+            pthread_mutex_init(&(mutex_confirm[n]), NULL);   
+        
             pthread_mutex_unlock(&mutex);
         }
     }

@@ -30,6 +30,11 @@ int check_commands(char *message){
         return -2;
     if(!strncmp("/quit", message, 5))
         return -1;
+    if(!strncmp("/ping", message, 5))
+        return -3;
+    if(!strncmp("/", message, 1))
+        return -4;
+    return 0;
 }      
     
 
@@ -42,7 +47,7 @@ void chat(void *socket_pointer, char *client_name){
         strcpy(message_to_send,client_name);
         strcat(message_to_send,": ");
         
-        printf("\nEnter the message:\n"); 
+        
 
         
         // check if the command to exit was entered 
@@ -50,6 +55,12 @@ void chat(void *socket_pointer, char *client_name){
             break;
         if(check_commands(message_read) == -2)
             continue;
+        if(check_commands(message_read) == -4){
+            printf("Invalid command. try again:\n");
+            continue;
+        }
+        if(!check_commands(message_read))
+            printf("\nEnter the message:\n"); 
 
         strcat(message_to_send,message_read);
         
@@ -59,6 +70,13 @@ void chat(void *socket_pointer, char *client_name){
     } 
 } 
 
+void confirm_recv(int socket_instance, int len){
+    char str[25];
+    sprintf(str, "/confirm:%d", len);
+    printf("\n--- enviando confirm %s----\n", str);
+    if(write(socket_instance, str, strlen(str)) < 0)
+        printf("\nError: server confirm fail.\n");
+}
 
 void *messager_receiver(void *socket_pointer){
     int socket_instance = *((int *)socket_pointer);
@@ -66,8 +84,10 @@ void *messager_receiver(void *socket_pointer){
     int len;
 
     while((len = recv(socket_instance, message_received, MAX_SEND,0)) > 0) {
+        confirm_recv(socket_instance, len);
         message_received[len] = '\0';
         fputs(message_received,stdout);
+        printf("\nEnter the message:\n");
     }
 }
 
